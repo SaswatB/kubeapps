@@ -1,12 +1,18 @@
 import { RouterAction } from "connected-react-router";
+import * as yaml from "js-yaml";
 import * as React from "react";
 import AceEditor from "react-ace";
+import Collapsible from "react-collapsible";
+import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 
 import { IServiceBindingWithSecret } from "../../shared/ServiceBinding";
 import { IChartState, IChartVersion, IRBACRole } from "../../shared/types";
 import { ErrorSelector } from "../ErrorAlert";
 import LoadingWrapper from "../LoadingWrapper";
 import DeploymentBinding from "./DeploymentBinding";
+
+import "react-tabs/style/react-tabs.css";
+import "./collapsible.css";
 
 import "brace/mode/yaml";
 import "brace/theme/xcode";
@@ -37,13 +43,13 @@ interface IDeploymentFormState {
   // deployment options
   releaseName: string;
   namespace: string;
-  appValues?: string;
+  appValues: string;
   valuesModified: boolean;
 }
 
 class DeploymentForm extends React.Component<IDeploymentFormProps, IDeploymentFormState> {
   public state: IDeploymentFormState = {
-    appValues: undefined,
+    appValues: "",
     isDeploying: false,
     namespace: this.props.namespace,
     releaseName: "",
@@ -94,7 +100,9 @@ class DeploymentForm extends React.Component<IDeploymentFormProps, IDeploymentFo
 
     if (!this.state.valuesModified) {
       if (version) {
-        this.setState({ appValues: nextProps.selected.values });
+        this.setState({
+          appValues: nextProps.selected.values !== undefined ? nextProps.selected.values : "",
+        });
       }
     }
   }
@@ -103,6 +111,8 @@ class DeploymentForm extends React.Component<IDeploymentFormProps, IDeploymentFo
     const { selected, bindingsWithSecrets, chartID, chartVersion, namespace } = this.props;
     const { version, versions } = selected;
     const { appValues, releaseName } = this.state;
+    const appValuesObj = yaml.safeLoad(appValues);
+
     if (selected.error) {
       return (
         <ErrorSelector error={selected.error} resource={`Chart "${chartID}" (${chartVersion})`} />
@@ -154,18 +164,34 @@ class DeploymentForm extends React.Component<IDeploymentFormProps, IDeploymentFo
                   ))}
                 </select>
               </div>
-              <div style={{ marginBottom: "1em" }}>
-                <label htmlFor="values">Values (YAML)</label>
-                <AceEditor
-                  mode="yaml"
-                  theme="xcode"
-                  name="values"
-                  width="100%"
-                  onChange={this.handleValuesChange}
-                  setOptions={{ showPrintMargin: false }}
-                  editorProps={{ $blockScrolling: Infinity }}
-                  value={appValues}
-                />
+              <div
+                style={{
+                  marginTop: "1em",
+                  marginBottom: "1em",
+                  border: "1px solid #cecece",
+                  padding: "20px",
+                }}
+              >
+                <Tabs>
+                  <TabList>
+                    <Tab>Values</Tab>
+                    <Tab>Yaml</Tab>
+                  </TabList>
+
+                  <TabPanel>{this.renderConfig(appValuesObj)}</TabPanel>
+                  <TabPanel>
+                    <AceEditor
+                      mode="yaml"
+                      theme="xcode"
+                      name="values"
+                      width="100%"
+                      onChange={this.handleValuesChange}
+                      setOptions={{ showPrintMargin: false }}
+                      editorProps={{ $blockScrolling: Infinity }}
+                      value={appValues}
+                    />
+                  </TabPanel>
+                </Tabs>
               </div>
               <div>
                 <button className="button button-primary" type="submit">
@@ -182,6 +208,26 @@ class DeploymentForm extends React.Component<IDeploymentFormProps, IDeploymentFo
         </form>
       </div>
     );
+  }
+
+  public renderConfig(config: object) {
+    const form = [];
+    for (const prop in config) {
+      if (typeof config[prop] === "object") {
+        form.push(
+          <Collapsible key={prop} trigger={prop}>
+            {this.renderConfig(config[prop])}
+          </Collapsible>,
+        );
+      } else {
+        form.push(
+          <div>
+            {prop}: <input type="text" value={config[prop]} />
+          </div>,
+        );
+      }
+    }
+    return form;
   }
 
   public handleDeploy = async (e: React.FormEvent<HTMLFormElement>) => {
